@@ -36,11 +36,11 @@ func main() {
 		Version: "v0.1",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:  "s-ids",
+				Name:  "sids",
 				Usage: "redo sector ids, if there are more than one, separate commas. ps: 1,2",
 				Value: "",
 			}, &cli.StringFlag{
-				Name:  "s-dir",
+				Name:  "sdir",
 				Usage: "The directory where the redo sector is stored",
 				Value: "",
 			},
@@ -83,7 +83,7 @@ func redo(cctx *cli.Context) error {
 		return err
 	}
 
-	sdir := cctx.String("s-dir")
+	sdir := cctx.String("sdir")
 	if sdir == "" {
 		home, _ := os.LookupEnv("HOME")
 		if home == "" {
@@ -145,7 +145,7 @@ func redo(cctx *cli.Context) error {
 		<-preCommit2Sema
 	}
 
-	sids := cctx.String("s-ids")
+	sids := cctx.String("sids")
 	sidStr := strings.Split(sids, ",")
 
 	log.Infow("will redo sectors", "sids", sids)
