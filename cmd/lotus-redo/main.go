@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 var log = logging.Logger("lotus-redo")
@@ -147,8 +148,9 @@ func redo(cctx *cli.Context) error {
 
 	sids := cctx.String("sids")
 	sidStr := strings.Split(sids, ",")
-
 	log.Infow("will redo sectors", "sids", sids)
+
+	var parallelNum sync.WaitGroup
 	for _, sStr := range sidStr {
 		sid, err := strconv.Atoi(sStr)
 		if err != nil {
@@ -157,7 +159,9 @@ func redo(cctx *cli.Context) error {
 		}
 
 		p1Start()
+		parallelNum.Add(1)
 		go func(sid int) {
+			defer parallelNum.Done()
 			log.Infow("redo sector", "sid", sid)
 
 			sidRef := storage.SectorRef{
@@ -208,9 +212,9 @@ func redo(cctx *cli.Context) error {
 
 			log.Infow("redo successful", "sid", sid)
 		}(sid)
-
 	}
 
+	parallelNum.Wait()
 	return nil
 }
 
