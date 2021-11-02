@@ -2,27 +2,27 @@ package main
 
 import (
 	"context"
-	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
 	"github.com/filecoin-project/go-address"
+	addr "github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/network"
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/api/v1api"
 	"github.com/filecoin-project/lotus/chain/actors/builtin/miner"
 	"github.com/filecoin-project/lotus/chain/types"
+	lcli "github.com/filecoin-project/lotus/cli"
 	"github.com/filecoin-project/lotus/extern/sector-storage/ffiwrapper"
 	"github.com/filecoin-project/lotus/extern/sector-storage/ffiwrapper/basicfs"
+	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
 	sealing "github.com/filecoin-project/lotus/extern/storage-sealing"
 	"github.com/filecoin-project/specs-storage/storage"
-	addr "github.com/filecoin-project/go-address"
-	lcli "github.com/filecoin-project/lotus/cli"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/xerrors"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 var log = logging.Logger("lotus-redo")
@@ -43,6 +43,11 @@ func main() {
 				Name:  "s-dir",
 				Usage: "The directory where the redo sector is stored",
 				Value: "",
+			},
+			&cli.IntFlag{
+				Name:  "parallel",
+				Usage: "num run in parallel",
+				Value: 1,
 			},
 		},
 		EnableBashCompletion: true,
@@ -114,49 +119,96 @@ func redo(cctx *cli.Context) error {
 		return err
 	}
 
-	sids := cctx.String("s-ids")
-	log.Infow("will redo sectors", "sids", sids)
+	p1Limit := cctx.Int("parallel")
+	if p1Limit <= 0 {
+		return xerrors.New("parallel must be greater than 0")
+	}
+	log.Infof("preCommit1 parallel number: %d", p1Limit)
+	preCommit1Sema := make(chan struct{}, p1Limit)
 
+	p2Limit := 1
+	preCommit2Sema := make(chan struct{}, p2Limit)
+
+	p1Start := func() {
+		preCommit1Sema <- struct{}{}
+	}
+
+	p1Done := func() {
+		<-preCommit1Sema
+	}
+
+	p2Start := func() {
+		preCommit2Sema <- struct{}{}
+	}
+
+	p2Done := func() {
+		<-preCommit2Sema
+	}
+
+	sids := cctx.String("s-ids")
 	sidStr := strings.Split(sids, ",")
+
+	log.Infow("will redo sectors", "sids", sids)
 	for _, sStr := range sidStr {
 		sid, err := strconv.Atoi(sStr)
-
-		log.Infow("redo sector", "sid", sid)
-
-		sidRef := storage.SectorRef{
-			ID: abi.SectorID{
-				Miner:  abi.ActorID(actor),
-				Number: abi.SectorNumber(sid),
-			},
-			ProofType: spt,
-		}
-
-		sInfo, err := minerApi.SectorsStatus(context.TODO(), abi.SectorNumber(sid), false)
 		if err != nil {
-			return err
+			log.Errorw("sid parse fail", "err", err)
+			continue
 		}
 
-		pi, err := sb.AddPiece(context.TODO(), sidRef, nil, abi.PaddedPieceSize(sectorSize).Unpadded(), sealing.NewNullReader(abi.UnpaddedPieceSize(sectorSize)))
-		if err != nil {
-			return err
-		}
+		p1Start()
+		go func(sid int) {
+			log.Infow("redo sector", "sid", sid)
 
-		p1Out, err := sb.SealPreCommit1(context.TODO(), sidRef, sInfo.Ticket.Value, []abi.PieceInfo{pi})
-		if err != nil {
-			return err
-		}
+			sidRef := storage.SectorRef{
+				ID: abi.SectorID{
+					Miner:  abi.ActorID(actor),
+					Number: abi.SectorNumber(sid),
+				},
+				ProofType: spt,
+			}
 
-		_, err = sb.SealPreCommit2(context.TODO(), sidRef, p1Out)
-		if err != nil {
-			return err
-		}
+			sInfo, err := minerApi.SectorsStatus(context.TODO(), abi.SectorNumber(sid), false)
+			if err != nil {
+				log.Errorw("API error: SectorsStatus", "err", err)
+				p1Done()
+				return
+			}
 
-		err = sb.FinalizeSector(context.TODO(), sidRef, nil)
-		if err != nil {
-			return err
-		}
+			pi, err := sb.AddPiece(context.TODO(), sidRef, nil, abi.PaddedPieceSize(sectorSize).Unpadded(), sealing.NewNullReader(abi.UnpaddedPieceSize(sectorSize)))
+			if err != nil {
+				log.Errorw("AddPiece error", "err", err)
+				p1Done()
+				return
+			}
 
-		log.Infow("redo successful", "sid", sid)
+			p1Out, err := sb.SealPreCommit1(context.TODO(), sidRef, sInfo.Ticket.Value, []abi.PieceInfo{pi})
+			if err != nil {
+				log.Errorw("SealPreCommit1 error", "err", err)
+				p1Done()
+				return
+			}
+
+			p1Done()
+
+			p2Start()
+			_, err = sb.SealPreCommit2(context.TODO(), sidRef, p1Out)
+			if err != nil {
+				log.Errorw("SealPreCommit2 error", "err", err)
+				p2Done()
+				return
+			}
+			p2Done()
+
+			err = sb.FinalizeSector(context.TODO(), sidRef, nil)
+			if err != nil {
+				log.Errorw("FinalizeSector error", "err", err)
+				return
+			}
+
+			log.Infow("redo successful", "sid", sid)
+		}(sid)
+
 	}
 
 	return nil
