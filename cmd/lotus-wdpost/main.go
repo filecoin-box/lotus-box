@@ -13,7 +13,6 @@ import (
 	"github.com/filecoin-project/lotus/chain/types"
 	lcli "github.com/filecoin-project/lotus/cli"
 	"github.com/filecoin-project/lotus/extern/sector-storage/ffiwrapper"
-	"github.com/filecoin-project/lotus/extern/sector-storage/ffiwrapper/basicfs"
 	"github.com/filecoin-project/specs-actors/v2/actors/runtime/proof"
 	cbor "github.com/ipfs/go-ipld-cbor"
 	logging "github.com/ipfs/go-log/v2"
@@ -24,7 +23,7 @@ import (
 	"strings"
 )
 
-var log = logging.Logger("emulator")
+var log = logging.Logger("wdpost")
 
 func main() {
 	_ = logging.SetLogLevel("*", "INFO")
@@ -103,18 +102,13 @@ var sectorEmulator = &cli.Command{
 			return err
 		}
 
-		sb, err := ffiwrapper.New(&basicfs.Provider{
-			Root: sdir,
-		})
+		err = wdpostEmulator(util.NewProvider(sdir), abi.ActorID(amid), sInfo)
 		if err != nil {
 			return err
 		}
 
-		err = emulator(sb, abi.ActorID(amid), sInfo)
-		if err != nil {
-			return err
-		}
-
+		sectorIds, _ := sbit.All(100000)
+		log.Infow("wdpost simulation is successful", "sids", sectorIds)
 		return nil
 	},
 }
@@ -205,18 +199,13 @@ var partitionEmulator = &cli.Command{
 			return err
 		}
 
-		sb, err := ffiwrapper.New(&basicfs.Provider{
-			Root: sdir,
-		})
+		err = wdpostEmulator(util.NewProvider(sdir), abi.ActorID(amid), sInfo)
 		if err != nil {
 			return err
 		}
 
-		err = emulator(sb, abi.ActorID(amid), sInfo)
-		if err != nil {
-			return err
-		}
-
+		sids, _ := liveSector.All(1000000)
+		log.Infow("wdpost simulation is successful", "sids", sids)
 		return nil
 	},
 }
@@ -265,13 +254,6 @@ var deadlineEmulator = &cli.Command{
 			return err
 		}
 
-		sb, err := ffiwrapper.New(&basicfs.Provider{
-			Root: sdir,
-		})
-		if err != nil {
-			return err
-		}
-
 		head, err := nodeApi.ChainHead(context.Background())
 		if err != nil {
 			return err
@@ -304,12 +286,14 @@ var deadlineEmulator = &cli.Command{
 				return err
 			}
 
-			err = emulator(sb, abi.ActorID(amid), sInfo)
+			err = wdpostEmulator(util.NewProvider(sdir), abi.ActorID(amid), sInfo)
 			if err != nil {
 				log.Warnw("wdpost emulator err", "deadlineID", deadlineID, "partitionID", idx)
 				return err
 			}
 
+			sids, _ := liveSector.All(1000000)
+			log.Infow("wdpost simulation is successful", "sids", sids)
 			return nil
 		})
 
@@ -361,16 +345,20 @@ func getSectorInfo(nodeApi api.FullNode, maddr addr.Address, sectors bitfield.Bi
 	return proofSectors, nil
 }
 
-func emulator(sb *ffiwrapper.Sealer, aid abi.ActorID, sInfo []proof.SectorInfo) error {
+func wdpostEmulator(e util.Emulator, aid abi.ActorID, sInfo []proof.SectorInfo) error {
 	var challenge [32]byte
 	rand.Read(challenge[:])
-	proofs, skp, err := sb.GenerateWindowPoSt(context.Background(), aid, sInfo, challenge[:])
+	proofs, faulty, skp, err := e.GenerateWindowPoSt(context.Background(), aid, sInfo, challenge[:])
 	if err != nil {
 		return err
 	}
 
 	if len(skp) != 0 {
 		log.Error("skip sectors: ", skp)
+	}
+
+	if len(faulty) != 0 {
+		log.Error("faulty sectors: ", faulty)
 	}
 
 	ok, err := ffiwrapper.ProofVerifier.VerifyWindowPoSt(context.TODO(), proof.WindowPoStVerifyInfo{
@@ -383,8 +371,6 @@ func emulator(sb *ffiwrapper.Sealer, aid abi.ActorID, sInfo []proof.SectorInfo) 
 		log.Error("window post verification failed")
 		return err
 	}
-
-	log.Info("wdpost simulation is successful")
 
 	return nil
 }
