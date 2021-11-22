@@ -2,14 +2,9 @@ package main
 
 import (
 	"context"
-	"github.com/filecoin-project/go-address"
 	addr "github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
-	"github.com/filecoin-project/go-state-types/network"
-	"github.com/filecoin-project/lotus/api"
-	"github.com/filecoin-project/lotus/api/v1api"
 	"github.com/filecoin-project/lotus/chain/actors/builtin/miner"
-	"github.com/filecoin-project/lotus/chain/types"
 	lcli "github.com/filecoin-project/lotus/cli"
 	"github.com/filecoin-project/lotus/extern/sector-storage/ffiwrapper"
 	"github.com/filecoin-project/lotus/extern/sector-storage/ffiwrapper/basicfs"
@@ -19,6 +14,7 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/xerrors"
+	"lotus-box/util"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -74,12 +70,13 @@ func redo(cctx *cli.Context) error {
 	}
 	defer closer()
 
-	maddr, err := getActorAddress(context.Background(), minerApi)
+	maddr, err := util.GetActorAddress(cctx)
 	if err != nil {
 		return err
 	}
 
-	sectorSize, nv, err := getSectorSize(context.Background(), nodeApi, maddr)
+
+	sectorSize, nv, err := util.GetSectorSize(context.Background(), nodeApi, maddr)
 	if err != nil {
 		return err
 	}
@@ -216,47 +213,4 @@ func redo(cctx *cli.Context) error {
 
 	parallelNum.Wait()
 	return nil
-}
-
-func getSectorSize(ctx context.Context, nodeApi v1api.FullNode, maddr address.Address) (abi.SectorSize, network.Version, error) {
-	head, err := nodeApi.ChainHead(context.Background())
-	if err != nil {
-		return 0, 0, err
-	}
-
-	tsk, err := types.TipSetKeyFromBytes(head.Key().Bytes())
-	if err != nil {
-		return 0, 0, err
-	}
-
-	mi, err := nodeApi.StateMinerInfo(ctx, maddr, tsk)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	ver, err := nodeApi.StateNetworkVersion(ctx, tsk)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	spt, err := miner.PreferredSealProofTypeFromWindowPoStType(ver, mi.WindowPoStProofType)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	sectorSize, err := spt.SectorSize()
-	if err != nil {
-		return 0, 0, err
-	}
-
-	return sectorSize, ver, nil
-}
-
-func getActorAddress(ctx context.Context, minerApi api.StorageMiner) (maddr address.Address, err error) {
-	maddr, err = minerApi.ActorAddress(ctx)
-	if err != nil {
-		return maddr, xerrors.Errorf("getting actor address: %w", err)
-	}
-
-	return maddr, nil
 }
