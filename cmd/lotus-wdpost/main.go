@@ -46,7 +46,7 @@ func main() {
 
 var sectorEmulator = &cli.Command{
 	Name:  "s-emulator",
-	Usage: "sector WindowPost simulator",
+	Usage: "sectors WindowPost simulator",
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:  "sids",
@@ -54,7 +54,7 @@ var sectorEmulator = &cli.Command{
 			Value: "",
 		}, &cli.StringFlag{
 			Name:  "sdir",
-			Usage: "The directory where the redo sector is stored",
+			Usage: "the directory where the sector is stored, if there are more than one, separate commas",
 			Value: "",
 		},
 		&cli.StringFlag{
@@ -127,7 +127,7 @@ var partitionEmulator = &cli.Command{
 			Value: 0,
 		}, &cli.StringFlag{
 			Name:  "sdir",
-			Usage: "The directory where the redo sector is stored",
+			Usage: "the directory where the sector is stored, if there are more than one, separate commas",
 			Value: "",
 		},
 		&cli.StringFlag{
@@ -219,7 +219,7 @@ var deadlineEmulator = &cli.Command{
 			Value: 0,
 		}, &cli.StringFlag{
 			Name:  "sdir",
-			Usage: "The directory where the redo sector is stored",
+			Usage: "the directory where the sector is stored, if there are more than one, separate commas",
 			Value: "",
 		},
 		&cli.StringFlag{
