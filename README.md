@@ -46,3 +46,37 @@ Need to set environment variables:
 
 This tool can simulate WindowsPost to determine whether the sector is correct. Allows you to determine whether a sector is intact.
 
+**build**:
+
+- git clone https://github.com/filecoin-project/lotus.git
+- cd lotus/ && RUSTFLAGS="-C target-cpu=native -g" FFI_BUILD_FROM_SOURCE="1" make clean all
+- cd ../ && git clone https://github.com/luluup777/lotus-box.git
+- cd lotus-box/ && go mod tidy
+- go build -o lotus-wdpost cmd/lotus-wdpost/main.go
+
+**start**
+
+```
+NAME:
+   lotus-wdpost - lotus wdpost emulator
+
+USAGE:
+   lotus-wdpost [global options] command [command options] [arguments...]
+
+VERSION:
+   v0.1
+
+COMMANDS:
+   s-emulator  sector WindowPost simulator
+   p-emulator  partition WindowPost simulator
+   d-emulator  deadline WindowPost simulator
+   help, h     Shows a list of commands or help for one command
+
+GLOBAL OPTIONS:
+   --help, -h     show help (default: false)
+   --version, -v  print the version (default: false)
+```
+
+Need to set environment variables:
+
+- `FULLNODE_API_INFO`
