@@ -1,0 +1,3 @@
+[submodule "extern/lotus"]
+	path = extern/lotus
+	url = git@github.com:filecoin-project/lotus.git
