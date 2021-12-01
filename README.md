@@ -10,7 +10,7 @@ This is a toolbox project to facilitate miners to better participate in filecoin
 ## lotus-redo
 This tool provides sector redo function, which can repair sectors when they are damaged.
 
-**start**:
+### start:
 
 ```
 ./lotus-redo -h           
@@ -37,7 +37,15 @@ GLOBAL OPTIONS:
 Need to set environment variables:
 
 - `FULLNODE_API_INFO`
-- `MINER_API_INFO`
+- `MINER_API_INFO
+- `FIL_PROOFS_USE_MULTICORE_SDR=1`
+- `FIL_PROOFS_MAXIMIZE_CACHING=1`
+- `FIL_PROOFS_USE_GPU_COLUMN_BUILDER=1`
+- `FIL_PROOFS_USE_GPU_TREE_BUILDER=1`
+
+### todo
+
+- deal sector redo
 
 ## lotus-wdpost
 
