@@ -1,4 +1,4 @@
-module lotus-box
+module github.com/luluup777/lotus-box
 
 go 1.16
 

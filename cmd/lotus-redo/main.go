@@ -12,9 +12,9 @@ import (
 	sealing "github.com/filecoin-project/lotus/extern/storage-sealing"
 	"github.com/filecoin-project/specs-storage/storage"
 	logging "github.com/ipfs/go-log/v2"
+	"github.com/luluup777/lotus-box/util"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/xerrors"
-	"lotus-box/util"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -74,7 +74,6 @@ func redo(cctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-
 
 	sectorSize, nv, err := util.GetSectorSize(context.Background(), nodeApi, maddr)
 	if err != nil {
