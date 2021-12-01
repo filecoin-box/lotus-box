@@ -113,7 +113,7 @@ func (e *Provider) pubSectorToPriv(ctx context.Context, mid abi.ActorID, sectorI
 			}
 		}
 
-		if err != nil {
+		if !cacheFilesExist || !sealedFileExist {
 			skipped = append(skipped, sid.ID)
 			continue
 		}
