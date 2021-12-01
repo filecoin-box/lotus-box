@@ -5,6 +5,7 @@ This is a toolbox project to facilitate miners to better participate in filecoin
 **build**:
 
 - git clone https://github.com/luluup777/lotus-box.git
+- [set the **environment variables** for compiling **lotus**](https://lotus.filecoin.io/docs/set-up/install/#native-filecoin-ffi)
 - make all
 
 ## lotus-redo
