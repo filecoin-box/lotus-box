@@ -90,10 +90,26 @@ func (e *Provider) pubSectorToPriv(ctx context.Context, mid abi.ActorID, sectorI
 		var paths storiface.SectorPaths
 		d := func() {}
 		var err error
+
+		cacheFilesExist := false
+		sealedFileExist := false
 		for _, provider := range e.ps {
-			paths, d, err = provider.AcquireSector(ctx, sid, storiface.FTCache|storiface.FTSealed, 0, storiface.PathStorage)
-			if err == nil {
-				break
+			var filePath storiface.SectorPaths
+			if !cacheFilesExist {
+				filePath, d, err = provider.AcquireSector(ctx, sid, storiface.FTCache, 0, storiface.PathStorage)
+				if err == nil {
+					cacheFilesExist = true
+					paths.Cache = filePath.Cache
+					doneFuncs = append(doneFuncs, d)
+				}
+			}
+			if !sealedFileExist {
+				filePath, d, err = provider.AcquireSector(ctx, sid, storiface.FTSealed, 0, storiface.PathStorage)
+				if err == nil {
+					sealedFileExist = true
+					paths.Sealed = filePath.Sealed
+					doneFuncs = append(doneFuncs, d)
+				}
 			}
 		}
 
@@ -101,7 +117,6 @@ func (e *Provider) pubSectorToPriv(ctx context.Context, mid abi.ActorID, sectorI
 			skipped = append(skipped, sid.ID)
 			continue
 		}
-		doneFuncs = append(doneFuncs, d)
 
 		postProofType, err := rpt(s.SealProof)
 		if err != nil {
