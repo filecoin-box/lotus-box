@@ -28,11 +28,12 @@ COMMANDS:
    help, h  Shows a list of commands or help for one command
 
 GLOBAL OPTIONS:
-   --sids value      redo sector ids, if there are more than one, separate commas. ps: 1,2
-   --sdir value      The directory where the redo sector is stored
-   --parallel value  num run in parallel (default: 1)
-   --help, -h        show help (default: false)
-   --version, -v     print the version (default: false)
+   --sids value         redo sector ids, if there are more than one, separate commas. ps: 1,2
+   --seal-dir value     redo sector seal directory
+   --storage-dir value  the storage directory where the redo sector is stored
+   --parallel value     num run in parallel (default: 1)
+   --help, -h           show help (default: false)
+   --version, -v        print the version (default: false)
 ```
 
 Need to set environment variables:

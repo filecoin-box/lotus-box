@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	addr "github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
@@ -13,10 +14,13 @@ import (
 	"github.com/filecoin-project/specs-storage/storage"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/luluup777/lotus-box/util"
+	"github.com/mitchellh/go-homedir"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/xerrors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,7 +29,7 @@ import (
 var log = logging.Logger("lotus-redo")
 
 func main() {
-	_ = logging.SetLogLevel("*", "DEBUG")
+	_ = logging.SetLogLevel("*", "INFO")
 
 	app := &cli.App{
 		Name:    "lotus-redo",
@@ -37,11 +41,14 @@ func main() {
 				Usage: "redo sector ids, if there are more than one, separate commas. ps: 1,2",
 				Value: "",
 			}, &cli.StringFlag{
-				Name:  "sdir",
-				Usage: "The directory where the redo sector is stored",
+				Name:  "seal-dir",
+				Usage: "redo sector seal directory",
 				Value: "",
-			},
-			&cli.IntFlag{
+			}, &cli.StringFlag{
+				Name:  "storage-dir",
+				Usage: "the storage directory where the redo sector is stored",
+				Value: "",
+			}, &cli.IntFlag{
 				Name:  "parallel",
 				Usage: "num run in parallel",
 				Value: 1,
@@ -80,7 +87,7 @@ func redo(cctx *cli.Context) error {
 		return err
 	}
 
-	sdir := cctx.String("sdir")
+	sdir := cctx.String("seal-dir")
 	if sdir == "" {
 		home, _ := os.LookupEnv("HOME")
 		if home == "" {
@@ -90,9 +97,19 @@ func redo(cctx *cli.Context) error {
 		log.Infow("No storage directory is set, the default directory will be used", "path", sdir)
 	}
 
-	for _, t := range storiface.PathTypes {
-		if err := os.MkdirAll(filepath.Join(sdir, t.String()), 0755); err != nil {
-			return err
+	storageDir := cctx.String("storage-dir")
+	for _, path := range []string{sdir, storageDir} {
+		if path == "" {
+			continue
+		}
+
+		for _, t := range storiface.PathTypes {
+			p := filepath.Join(path, t.String())
+			if _, err := os.Stat(p); err != nil {
+				if err := os.MkdirAll(filepath.Join(path, t.String()), 0755); err != nil {
+					return err
+				}
+			}
 		}
 	}
 
@@ -192,7 +209,7 @@ func redo(cctx *cli.Context) error {
 			p1Done()
 
 			p2Start()
-			_, err = sb.SealPreCommit2(context.TODO(), sidRef, p1Out)
+			cid, err := sb.SealPreCommit2(context.TODO(), sidRef, p1Out)
 			if err != nil {
 				log.Errorw("SealPreCommit2 error", "err", err)
 				p2Done()
@@ -206,10 +223,80 @@ func redo(cctx *cli.Context) error {
 				return
 			}
 
-			log.Infow("redo successful", "sid", sid)
+			isSuccess := true
+			if cid.Sealed.String() != sInfo.CommR.String() {
+				log.Warnw("SealPreCommit2 result is invalid, different from that on the chain", "result-cod", cid.Sealed.String(), "chain-cid", sInfo.CommR.String())
+				isSuccess = false
+			}
+
+			if isSuccess {
+				log.Infow("redo successful", "sid", sid)
+
+				if storageDir != "" {
+					go func() {
+						for _, pt := range storiface.PathTypes {
+							if pt == storiface.FTUnsealed {
+								continue // Currently only CC sector is supported
+							}
+
+							err := move(filepath.Join(sdir, pt.String(), storiface.SectorName(sidRef.ID)), filepath.Join(storageDir, pt.String(), storiface.SectorName(sidRef.ID)))
+							if err != nil {
+								log.Warnw("move sector fail", "err", err, "sid", sid)
+							} else {
+								log.Infow("move sector successful", "sid", sid)
+							}
+						}
+					}()
+				}
+			} else {
+				log.Warnw("redo fail", "sid", sid)
+			}
 		}(sid)
 	}
 
 	parallelNum.Wait()
+	return nil
+}
+
+func move(from, to string) error {
+	from, err := homedir.Expand(from)
+	if err != nil {
+		return xerrors.Errorf("move: expanding from: %w", err)
+	}
+
+	to, err = homedir.Expand(to)
+	if err != nil {
+		return xerrors.Errorf("move: expanding to: %w", err)
+	}
+
+	if filepath.Base(from) != filepath.Base(to) {
+		return xerrors.Errorf("move: base names must match ('%s' != '%s')", filepath.Base(from), filepath.Base(to))
+	}
+
+	log.Debugw("move sector data", "from", from, "to", to)
+
+	toDir := filepath.Dir(to)
+
+	// `mv` has decades of experience in moving files quickly; don't pretend we
+	//  can do better
+
+	var errOut bytes.Buffer
+
+	var cmd *exec.Cmd
+	if runtime.GOOS == "darwin" {
+		if err := os.MkdirAll(toDir, 0777); err != nil {
+			return xerrors.Errorf("failed exec MkdirAll: %s", err)
+		}
+
+		cmd = exec.Command("/usr/bin/env", "mv", from, toDir) // nolint
+	} else {
+		cmd = exec.Command("/usr/bin/env", "mv", "-t", toDir, from) // nolint
+	}
+
+	cmd.Stderr = &errOut
+	if err := cmd.Run(); err != nil {
+		return xerrors.Errorf("exec mv (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
+	}
+
 	return nil
 }
