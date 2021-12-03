@@ -233,7 +233,10 @@ func redo(cctx *cli.Context) error {
 				log.Infow("redo successful", "sid", sid)
 
 				if storageDir != "" {
+					parallelNum.Add(1)
 					go func() {
+						defer parallelNum.Done()
+
 						for _, pt := range storiface.PathTypes {
 							if pt == storiface.FTUnsealed {
 								continue // Currently only CC sector is supported
